@@ -1,8 +1,6 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// create a smart contract that lets anyone create monthly subscriptions and lets other users pay for it monthly in USDC
-
 interface IERC20 {
     function transferFrom(
         address _from,
@@ -15,6 +13,7 @@ contract Kaching {
     uint256 private last;
     uint256 private lastSubscription;
     address private owner;
+
     struct Option {
         string name;
         uint256 price;
@@ -30,6 +29,10 @@ contract Kaching {
         address owner;
         uint256 lastPayment;
     }
+
+    event SubscriptionCreated(uint256 indexed subscriptionId, uint256 interval);
+
+    event SubscriptionDestroyed(uint256 indexed subscriptionId);
 
     mapping(uint256 => Option) public options;
     mapping(uint256 => Subscription) public subscriptions;
@@ -52,8 +55,8 @@ contract Kaching {
             interval: _interval,
             token: 0x2F375e94FC336Cdec2Dc0cCB5277FE59CBf1cAe5
         });
-        require(opt.interval != 0);
-        require(opt.price != 0);
+        require(opt.interval != 0, "Interval cannot be 0");
+        require(opt.price != 0, "Price cannot be 0");
         options[last] = opt;
         last++;
         return last - 1;
@@ -73,8 +76,8 @@ contract Kaching {
             interval: _interval,
             token: 0x2F375e94FC336Cdec2Dc0cCB5277FE59CBf1cAe5
         });
-        require(opt.interval != 0);
-        require(opt.price != 0);
+        require(opt.interval != 0, "interval cannot be 0");
+        require(opt.price != 0, "price cannot be 0");
         options[last] = opt;
         last++;
         return last - 1;
@@ -94,8 +97,8 @@ contract Kaching {
             interval: _interval,
             token: _token
         });
-        require(opt.interval != 0);
-        require(opt.price != 0);
+        require(opt.interval != 0, "interval cannot be 0");
+        require(opt.price != 0, "price cannot be 0");
         options[last] = opt;
         last++;
         return last - 1;
@@ -118,8 +121,8 @@ contract Kaching {
             interval: _interval,
             token: _token
         });
-        require(opt.interval != 0);
-        require(opt.price != 0);
+        require(opt.interval != 0, "interval cannot be 0");
+        require(opt.price != 0, "price cannot be 0");
         options[last] = opt;
         last++;
         return last - 1;
@@ -127,39 +130,62 @@ contract Kaching {
 
     function subscribe(uint256 _id) public returns (uint256) {
         Option memory sub = options[_id];
-        require(sub.active);
-        require(sub.owner != msg.sender);
-        IERC20 USDC = IERC20(0x2F375e94FC336Cdec2Dc0cCB5277FE59CBf1cAe5);
-        require(USDC.transferFrom(msg.sender, sub.owner, sub.price));
+        require(sub.active, "Subscription type is not active");
+        require(sub.owner != msg.sender, "You cannot subscribe to your own subscription");
+        _pay(sub.token, sub.owner, sub.price);
         subscriptions[lastSubscription] = Subscription({
             id: _id,
             active: true,
             owner: msg.sender,
             lastPayment: block.timestamp
         });
+        emit SubscriptionCreated(lastSubscription - 1, sub.interval);
         lastSubscription++;
         return lastSubscription - 1;
+    }
+
+    function _pay(
+        address token,
+        address to,
+        uint256 price,
+        address from
+    ) private {
+        IERC20 USDC = IERC20(token);
+        require(USDC.transferFrom(from, to, price));
+    }
+
+    function _pay(
+        address token,
+        address to,
+        uint256 price
+    ) private {
+        IERC20 USDC = IERC20(token);
+        require(USDC.transferFrom(msg.sender, to, price));
     }
 
     function unsubscribe(uint256 _id) public {
         Subscription memory sub = subscriptions[_id];
         require(sub.active);
         require(sub.owner == msg.sender || owner == msg.sender);
-        delete subscriptions[_id];
+        sub.active = false;
+        subscriptions[_id] = sub;
+        emit SubscriptionDestroyed(_id);
     }
 
     function pay(uint256 _id) public {
         Subscription memory sub = subscriptions[_id];
         Option memory opt = options[sub.id];
-        require(sub.active);
-        require(block.timestamp - sub.lastPayment >= opt.interval);
-        IERC20 USDC = IERC20(opt.token);
+        require(sub.active, "Subscription has been deactivated");
         require(
-            USDC.transferFrom(
-                sub.owner,
-                owner,
-                (opt.price * (block.timestamp - sub.lastPayment)) / opt.interval
-            )
+            block.timestamp - sub.lastPayment >= opt.interval,
+            "Payment not due"
+        );
+
+        _pay(
+            opt.token,
+            opt.owner,
+            (opt.price * (block.timestamp - sub.lastPayment)) / opt.interval,
+            sub.owner
         );
         sub.lastPayment = block.timestamp;
     }
@@ -176,7 +202,7 @@ contract Kaching {
         return options[_id];
     }
 
-    function getOptions() public view returns (Option[] memory) {
+    function getAllOptions() public view returns (Option[] memory) {
         Option[] memory res = new Option[](last);
         for (uint256 i = 0; i < last; i++) {
             res[i] = options[i];
@@ -184,14 +210,13 @@ contract Kaching {
         return res;
     }
 
-    function getSubscriptions() public view returns (Subscription[] memory) {
+    function getAllSubscriptions() public view returns (Subscription[] memory) {
         Subscription[] memory res = new Subscription[](lastSubscription);
         for (uint256 i = 0; i < lastSubscription; i++) {
             res[i] = subscriptions[i];
         }
         return res;
     }
-
 
     function changeOwner(address _newOwner) public {
         require(owner == msg.sender);
@@ -211,6 +236,4 @@ contract Kaching {
         opt.active = false;
         options[_id] = opt;
     }
-
-
 }

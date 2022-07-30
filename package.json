@@ -1,0 +1,19 @@
+{
+  "name": "kaching",
+  "version": "1.0.0",
+  "description": "onchain subscriptions",
+  "main": "hardhat.config.js",
+  "scripts": {
+    "test": "npx hardhat test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ayshptk/kaching.git"
+  },
+  "author": "ayush (hey@ayush.sh)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ayshptk/kaching/issues"
+  },
+  "homepage": "https://github.com/ayshptk/kaching#readme"
+}
