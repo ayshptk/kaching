@@ -15,5 +15,8 @@
   "bugs": {
     "url": "https://github.com/ayshptk/kaching/issues"
   },
-  "homepage": "https://github.com/ayshptk/kaching#readme"
+  "homepage": "https://github.com/ayshptk/kaching#readme",
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.7.2"
+  }
 }

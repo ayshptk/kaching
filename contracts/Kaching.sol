@@ -13,9 +13,10 @@ contract Kaching {
     uint256 private last;
     uint256 private lastSubscription;
     address private owner;
-    address public immutable USDC_ADDRESS;
+    address public immutable DEFAULT_ADDRESS;
 
     struct Option {
+        uint256 id;
         string name;
         uint256 price;
         bool active;
@@ -26,6 +27,7 @@ contract Kaching {
 
     struct Subscription {
         uint256 id;
+        uint256 optionId;
         bool active;
         address owner;
         uint256 lastPayment;
@@ -42,13 +44,13 @@ contract Kaching {
     mapping(uint256 => Option) public options;
     mapping(uint256 => Subscription) public subscriptions;
 
-    constructor(address _usdcAddress) {
+    constructor(address _defaultAddress) {
         last = 0;
         owner = msg.sender;
-        USDC_ADDRESS = _usdcAddress;
+        DEFAULT_ADDRESS = _defaultAddress;
     }
 
-    function createUsdcSubscription(
+    function createSubscription(
         string memory _name,
         uint256 _price,
         uint256 _interval
@@ -59,18 +61,24 @@ contract Kaching {
                 _price,
                 msg.sender,
                 _interval,
-                USDC_ADDRESS
+                DEFAULT_ADDRESS
             );
     }
 
-    function createUsdcSubscriptionToAddress(
+    function createSubscriptionToAddress(
         string memory _name,
         uint256 _price,
         uint256 _interval,
         address _owner
     ) public returns (uint256) {
         return
-            _createSubscription(_name, _price, _owner, _interval, USDC_ADDRESS);
+            _createSubscription(
+                _name,
+                _price,
+                _owner,
+                _interval,
+                DEFAULT_ADDRESS
+            );
     }
 
     function createTokenSubscription(
@@ -96,18 +104,16 @@ contract Kaching {
     function subscribe(uint256 _id) public returns (uint256) {
         Option memory sub = options[_id];
         require(sub.active, "Subscription type is not active");
-        require(
-            sub.owner != msg.sender,
-            "You cannot subscribe to your own subscription"
-        );
+
         _pay(sub.token, sub.owner, sub.price);
         subscriptions[lastSubscription] = Subscription({
-            id: _id,
+            optionId: _id,
+            id: lastSubscription,
             active: true,
             owner: msg.sender,
             lastPayment: block.timestamp
         });
-        emit SubscriptionCreated(lastSubscription - 1, sub.interval);
+        emit SubscriptionCreated(lastSubscription, sub.interval);
         unchecked {
             ++lastSubscription;
         }
@@ -125,7 +131,7 @@ contract Kaching {
 
     function pay(uint256 _id) public {
         Subscription memory sub = subscriptions[_id];
-        Option memory opt = options[sub.id];
+        Option memory opt = options[sub.optionId];
         require(sub.active, "Subscription has been deactivated");
         require(
             block.timestamp - sub.lastPayment >= opt.interval,
@@ -139,7 +145,8 @@ contract Kaching {
     }
 
     function _divide(uint256 num1, uint256 num2)
-        private pure
+        private
+        pure
         returns (uint256 result)
     {
         assembly {
@@ -195,26 +202,26 @@ contract Kaching {
     }
 
     function _pay(
-        address token,
-        address to,
-        uint256 price,
-        address from
+        address _token,
+        address _to,
+        uint256 _price,
+        address _from
     ) private {
-        IERC20 USDC = IERC20(token);
+        IERC20 token = IERC20(_token);
         require(
-            USDC.transferFrom(from, to, price),
+            token.transferFrom(_from, _to, _price),
             "Failed to pay. Approval required?"
         );
     }
 
     function _pay(
-        address token,
-        address to,
-        uint256 price
+        address _token,
+        address _to,
+        uint256 _price
     ) private {
-        IERC20 USDC = IERC20(token);
+        IERC20 token = IERC20(_token);
         require(
-            USDC.transferFrom(msg.sender, to, price),
+            token.transferFrom(msg.sender, _to, _price),
             "Failed to pay. Approval required?"
         );
     }
@@ -227,6 +234,7 @@ contract Kaching {
         address _token
     ) private returns (uint256) {
         Option memory opt = Option({
+            id: last,
             name: _name,
             price: _price,
             active: true,
