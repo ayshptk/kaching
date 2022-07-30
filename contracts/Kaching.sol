@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.4;
 
 interface IERC20 {
     function transferFrom(
@@ -13,7 +13,7 @@ contract Kaching {
     uint256 private last;
     uint256 private lastSubscription;
     address private owner;
-    address public USDC_ADDRESS = 0x2F375e94FC336Cdec2Dc0cCB5277FE59CBf1cAe5;
+    address public immutable USDC_ADDRESS;
 
     struct Option {
         string name;
@@ -42,9 +42,10 @@ contract Kaching {
     mapping(uint256 => Option) public options;
     mapping(uint256 => Subscription) public subscriptions;
 
-    constructor() {
+    constructor(address _usdcAddress) {
         last = 0;
         owner = msg.sender;
+        USDC_ADDRESS = _usdcAddress;
     }
 
     function createUsdcSubscription(
@@ -69,13 +70,7 @@ contract Kaching {
         address _owner
     ) public returns (uint256) {
         return
-            _createSubscription(
-                _name,
-                _price,
-                _owner,
-                _interval,
-                USDC_ADDRESS
-            );
+            _createSubscription(_name, _price, _owner, _interval, USDC_ADDRESS);
     }
 
     function createTokenSubscription(
@@ -87,8 +82,6 @@ contract Kaching {
         return
             _createSubscription(_name, _price, msg.sender, _interval, _token);
     }
-
-    // pay to a different address
 
     function createTokenSubscriptionToAddress(
         string memory _name,
@@ -115,7 +108,9 @@ contract Kaching {
             lastPayment: block.timestamp
         });
         emit SubscriptionCreated(lastSubscription - 1, sub.interval);
-        lastSubscription++;
+        unchecked {
+            ++lastSubscription;
+        }
         return lastSubscription - 1;
     }
 
@@ -136,12 +131,20 @@ contract Kaching {
             block.timestamp - sub.lastPayment >= opt.interval,
             "Payment not due"
         );
-        uint256 toBePaid = (opt.price * (block.timestamp - sub.lastPayment)) /
-            opt.interval;
-
+        uint256 num = opt.price * (block.timestamp - sub.lastPayment);
+        uint256 toBePaid = _divide(num, opt.interval);
         _pay(opt.token, opt.owner, toBePaid, sub.owner);
         emit SubscriptionPaid(_id, toBePaid, msg.sender);
         sub.lastPayment = block.timestamp;
+    }
+
+    function _divide(uint256 num1, uint256 num2)
+        private pure
+        returns (uint256 result)
+    {
+        assembly {
+            result := div(num1, num2)
+        }
     }
 
     function getSubscription(uint256 _id)
@@ -158,7 +161,7 @@ contract Kaching {
 
     function getAllOptions() public view returns (Option[] memory) {
         Option[] memory res = new Option[](last);
-        for (uint256 i = 0; i < last; i++) {
+        for (uint256 i = 0; i < last; ++i) {
             res[i] = options[i];
         }
         return res;
@@ -166,7 +169,7 @@ contract Kaching {
 
     function getAllSubscriptions() public view returns (Subscription[] memory) {
         Subscription[] memory res = new Subscription[](lastSubscription);
-        for (uint256 i = 0; i < lastSubscription; i++) {
+        for (uint256 i = 0; i < lastSubscription; ++i) {
             res[i] = subscriptions[i];
         }
         return res;
@@ -234,7 +237,9 @@ contract Kaching {
         require(opt.interval != 0, "interval cannot be 0");
         require(opt.price != 0, "price cannot be 0");
         options[last] = opt;
-        last++;
+        unchecked {
+            ++last;
+        }
         return last - 1;
     }
 }
