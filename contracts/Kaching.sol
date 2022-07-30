@@ -13,6 +13,7 @@ contract Kaching {
     uint256 private last;
     uint256 private lastSubscription;
     address private owner;
+    address public USDC_ADDRESS = 0x2F375e94FC336Cdec2Dc0cCB5277FE59CBf1cAe5;
 
     struct Option {
         string name;
@@ -31,8 +32,12 @@ contract Kaching {
     }
 
     event SubscriptionCreated(uint256 indexed subscriptionId, uint256 interval);
-
     event SubscriptionDestroyed(uint256 indexed subscriptionId);
+    event SubscriptionPaid(
+        uint256 indexed subscriptionId,
+        uint256 amount,
+        address sender
+    );
 
     mapping(uint256 => Option) public options;
     mapping(uint256 => Subscription) public subscriptions;
@@ -47,19 +52,14 @@ contract Kaching {
         uint256 _price,
         uint256 _interval
     ) public returns (uint256) {
-        Option memory opt = Option({
-            name: _name,
-            price: _price,
-            active: true,
-            owner: msg.sender,
-            interval: _interval,
-            token: 0x2F375e94FC336Cdec2Dc0cCB5277FE59CBf1cAe5
-        });
-        require(opt.interval != 0, "Interval cannot be 0");
-        require(opt.price != 0, "Price cannot be 0");
-        options[last] = opt;
-        last++;
-        return last - 1;
+        return
+            _createSubscription(
+                _name,
+                _price,
+                msg.sender,
+                _interval,
+                USDC_ADDRESS
+            );
     }
 
     function createUsdcSubscriptionToAddress(
@@ -68,19 +68,14 @@ contract Kaching {
         uint256 _interval,
         address _owner
     ) public returns (uint256) {
-        Option memory opt = Option({
-            name: _name,
-            price: _price,
-            active: true,
-            owner: _owner,
-            interval: _interval,
-            token: 0x2F375e94FC336Cdec2Dc0cCB5277FE59CBf1cAe5
-        });
-        require(opt.interval != 0, "interval cannot be 0");
-        require(opt.price != 0, "price cannot be 0");
-        options[last] = opt;
-        last++;
-        return last - 1;
+        return
+            _createSubscription(
+                _name,
+                _price,
+                _owner,
+                _interval,
+                USDC_ADDRESS
+            );
     }
 
     function createTokenSubscription(
@@ -89,19 +84,8 @@ contract Kaching {
         uint256 _interval,
         address _token
     ) public returns (uint256) {
-        Option memory opt = Option({
-            name: _name,
-            price: _price,
-            active: true,
-            owner: msg.sender,
-            interval: _interval,
-            token: _token
-        });
-        require(opt.interval != 0, "interval cannot be 0");
-        require(opt.price != 0, "price cannot be 0");
-        options[last] = opt;
-        last++;
-        return last - 1;
+        return
+            _createSubscription(_name, _price, msg.sender, _interval, _token);
     }
 
     // pay to a different address
@@ -113,25 +97,16 @@ contract Kaching {
         address _token,
         address _owner
     ) public returns (uint256) {
-        Option memory opt = Option({
-            name: _name,
-            price: _price,
-            active: true,
-            owner: _owner,
-            interval: _interval,
-            token: _token
-        });
-        require(opt.interval != 0, "interval cannot be 0");
-        require(opt.price != 0, "price cannot be 0");
-        options[last] = opt;
-        last++;
-        return last - 1;
+        return _createSubscription(_name, _price, _owner, _interval, _token);
     }
 
     function subscribe(uint256 _id) public returns (uint256) {
         Option memory sub = options[_id];
         require(sub.active, "Subscription type is not active");
-        require(sub.owner != msg.sender, "You cannot subscribe to your own subscription");
+        require(
+            sub.owner != msg.sender,
+            "You cannot subscribe to your own subscription"
+        );
         _pay(sub.token, sub.owner, sub.price);
         subscriptions[lastSubscription] = Subscription({
             id: _id,
@@ -142,25 +117,6 @@ contract Kaching {
         emit SubscriptionCreated(lastSubscription - 1, sub.interval);
         lastSubscription++;
         return lastSubscription - 1;
-    }
-
-    function _pay(
-        address token,
-        address to,
-        uint256 price,
-        address from
-    ) private {
-        IERC20 USDC = IERC20(token);
-        require(USDC.transferFrom(from, to, price));
-    }
-
-    function _pay(
-        address token,
-        address to,
-        uint256 price
-    ) private {
-        IERC20 USDC = IERC20(token);
-        require(USDC.transferFrom(msg.sender, to, price));
     }
 
     function unsubscribe(uint256 _id) public {
@@ -180,13 +136,11 @@ contract Kaching {
             block.timestamp - sub.lastPayment >= opt.interval,
             "Payment not due"
         );
+        uint256 toBePaid = (opt.price * (block.timestamp - sub.lastPayment)) /
+            opt.interval;
 
-        _pay(
-            opt.token,
-            opt.owner,
-            (opt.price * (block.timestamp - sub.lastPayment)) / opt.interval,
-            sub.owner
-        );
+        _pay(opt.token, opt.owner, toBePaid, sub.owner);
+        emit SubscriptionPaid(_id, toBePaid, msg.sender);
         sub.lastPayment = block.timestamp;
     }
 
@@ -235,5 +189,52 @@ contract Kaching {
         require(opt.owner == msg.sender || owner == msg.sender);
         opt.active = false;
         options[_id] = opt;
+    }
+
+    function _pay(
+        address token,
+        address to,
+        uint256 price,
+        address from
+    ) private {
+        IERC20 USDC = IERC20(token);
+        require(
+            USDC.transferFrom(from, to, price),
+            "Failed to pay. Approval required?"
+        );
+    }
+
+    function _pay(
+        address token,
+        address to,
+        uint256 price
+    ) private {
+        IERC20 USDC = IERC20(token);
+        require(
+            USDC.transferFrom(msg.sender, to, price),
+            "Failed to pay. Approval required?"
+        );
+    }
+
+    function _createSubscription(
+        string memory _name,
+        uint256 _price,
+        address _owner,
+        uint256 _interval,
+        address _token
+    ) private returns (uint256) {
+        Option memory opt = Option({
+            name: _name,
+            price: _price,
+            active: true,
+            owner: _owner,
+            interval: _interval,
+            token: _token
+        });
+        require(opt.interval != 0, "interval cannot be 0");
+        require(opt.price != 0, "price cannot be 0");
+        options[last] = opt;
+        last++;
+        return last - 1;
     }
 }
