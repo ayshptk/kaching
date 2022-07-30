@@ -4,7 +4,8 @@
   "description": "onchain subscriptions",
   "main": "hardhat.config.js",
   "scripts": {
-    "test": "npx hardhat test"
+    "test": "npx hardhat test",
+    "build": "npx hardhat compile"
   },
   "repository": {
     "type": "git",
