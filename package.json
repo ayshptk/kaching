@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/ayshptk/kaching#readme",
   "dependencies": {
+    "@nomiclabs/hardhat-waffle": "^2.0.3",
     "@openzeppelin/contracts": "^4.7.2",
     "hardhat": "^2.10.1"
   }
